@@ -1,24 +1,24 @@
 name: Aggiornamento BTP Quotidiano
 
-# Quando deve partire questo robot?
 on:
   schedule:
-    # Esegue il bot ogni giorno alle 18:00 (orario UTC, in Italia saranno le 19:00 o 20:00)
-    # dal Lunedì (1) al Venerdì (5)
     - cron: '0 18 * * 1-5' 
   workflow_dispatch: 
-    # Questo permette di far partire il bot manualmente con un tasto da GitHub!
 
 jobs:
   aggiorna-dati:
-    runs-on: ubuntu-latest # Usa un server Linux gratuito fornito da GitHub
+    runs-on: ubuntu-latest 
+
+    # 🌟 MAGIA 1: Questa riga FORZA i permessi di scrittura per il salvataggio!
+    permissions:
+      contents: write
 
     steps:
     - name: 1. Scarica i file del nostro progetto
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
 
     - name: 2. Prepara Python sul server
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
         python-version: '3.10'
 
@@ -32,13 +32,14 @@ jobs:
 
     - name: 5. Salva i nuovi dati e caricali sul sito
       run: |
-        # Configura l'identità del bot per poter salvare i file
         git config --global user.name "GitHub Actions Bot"
         git config --global user.email "actions@github.com"
         
-        # Aggiunge il nuovo file CSV (se è cambiato)
-        git add dati_btp_completi.csv
-        
-        # Se c'è una differenza rispetto a ieri, salva (commit) e carica (push)
-        # Altrimenti, non fare nulla per non creare salvataggi a vuoto
-        git diff --quiet && git diff --staged --quiet || (git commit -m "Aggiornamento automatico dati BTP" && git push)
+        # 🌟 MAGIA 2: Controlla se il file esiste prima di aggiungerlo, evitando l'errore 128!
+        if [ -f "dati_btp_completi.csv" ]; then
+          git add dati_btp_completi.csv
+          git diff --quiet && git diff --staged --quiet || (git commit -m "Aggiornamento automatico dati BTP" && git push)
+          echo "✅ Salvataggio completato con successo!"
+        else
+          echo "⚠️ ATTENZIONE: Il file CSV non è stato creato. Lo script Python è stato bloccato."
+        fi
