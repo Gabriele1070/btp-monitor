@@ -1,0 +1,44 @@
+name: Aggiornamento BTP Quotidiano
+
+# Quando deve partire questo robot?
+on:
+  schedule:
+    # Esegue il bot ogni giorno alle 18:00 (orario UTC, in Italia saranno le 19:00 o 20:00)
+    # dal Lunedì (1) al Venerdì (5)
+    - cron: '0 18 * * 1-5' 
+  workflow_dispatch: 
+    # Questo permette di far partire il bot manualmente con un tasto da GitHub!
+
+jobs:
+  aggiorna-dati:
+    runs-on: ubuntu-latest # Usa un server Linux gratuito fornito da GitHub
+
+    steps:
+    - name: 1. Scarica i file del nostro progetto
+      uses: actions/checkout@v3
+
+    - name: 2. Prepara Python sul server
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+
+    - name: 3. Installa le librerie necessarie
+      run: |
+        python -m pip install --upgrade pip
+        pip install pandas selenium webdriver-manager html5lib lxml
+
+    - name: 4. Lancia il nostro script magico
+      run: python scraper_btp.py
+
+    - name: 5. Salva i nuovi dati e caricali sul sito
+      run: |
+        # Configura l'identità del bot per poter salvare i file
+        git config --global user.name "GitHub Actions Bot"
+        git config --global user.email "actions@github.com"
+        
+        # Aggiunge il nuovo file CSV (se è cambiato)
+        git add dati_btp_completi.csv
+        
+        # Se c'è una differenza rispetto a ieri, salva (commit) e carica (push)
+        # Altrimenti, non fare nulla per non creare salvataggi a vuoto
+        git diff --quiet && git diff --staged --quiet || (git commit -m "Aggiornamento automatico dati BTP" && git push)
