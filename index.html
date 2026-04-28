@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Monitor BTP - Dati Reali</title>
+    <!-- Tailwind CSS per lo stile -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome per le icone -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <!-- PapaParse per leggere il file CSV in automatico -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    
+    <style>
+        th { transition: background-color 0.2s; }
+        tbody tr { transition: background-color 0.15s; }
+        /* Stile personalizzato per l'input file nascosto */
+        input[type="file"] { display: none; }
+        .custom-file-upload {
+            display: inline-block;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800 font-sans p-4 md:p-8 min-h-screen">
+
+    <div class="max-w-7xl mx-auto bg-white rounded-xl shadow-xl overflow-hidden border border-gray-200">
+        
+        <!-- Intestazione -->
+        <div class="p-6 border-b border-gray-200 bg-white flex flex-col md:flex-row justify-between items-center gap-4">
+            <div>
+                <h1 class="text-3xl font-extrabold text-gray-900 flex items-center">
+                    <i class="fa-solid fa-chart-column text-blue-600 mr-3"></i>
+                    BTP Dashboard
+                </h1>
+                <p class="text-sm text-gray-500 mt-1" id="statusMessage">Caricamento dati in corso...</p>
+            </div>
+            
+            <div class="flex flex-col sm:flex-row gap-4 items-center w-full md:w-auto">
+                <!-- Bottone manuale rimosso per l'automazione -->
+
+                <!-- Barra di ricerca -->
+                <div class="relative w-full sm:w-64">
+                    <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <i class="fa-solid fa-magnifying-glass text-gray-400"></i>
+                    </div>
+                    <input type="text" id="searchInput" class="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg leading-5 bg-gray-50 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 sm:text-sm" placeholder="Cerca un titolo..." disabled>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sezione Tabella -->
+        <div class="overflow-x-auto max-h-[70vh]">
+            <table class="min-w-full divide-y divide-gray-200 text-sm relative">
+                <thead class="bg-gray-50 sticky top-0 shadow-sm z-10" id="tableHead">
+                    <!-- Le intestazioni verranno generate dinamicamente -->
+                    <tr>
+                        <th class="px-6 py-8 text-center text-gray-500 font-normal">
+                            <i class="fa-solid fa-spinner fa-spin text-3xl mb-3 text-blue-500 block"></i>
+                            Connessione ai dati in corso...
+                        </th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-100" id="tableBody">
+                    <!-- Le righe verranno generate dinamicamente -->
+                </tbody>
+            </table>
+        </div>
+        
+        <!-- Footer -->
+        <div class="bg-gray-50 px-6 py-3 border-t border-gray-200 text-sm text-gray-500 flex justify-between items-center">
+            <span id="rowCount" class="font-medium text-gray-700">In attesa di dati...</span>
+            <span id="lastUpdate">Aggiornamento automatico attivato</span>
+        </div>
+    </div>
+
+    <script>
+        // --- LOGICA JAVASCRIPT ---
+        
+        let globalData = [];      // Conterrà tutti i dati del CSV
+        let tableHeaders = [];    // Conterrà i nomi delle colonne
+        let currentSortColumn = '';
+        let sortAsc = true;
+
+        // 1. CARICAMENTO AUTOMATICO DEL CSV
+        // Al caricamento della pagina, cerchiamo il file "dati_btp_completi.csv" nella stessa cartella
+        window.addEventListener('DOMContentLoaded', () => {
+            const statusMessage = document.getElementById('statusMessage');
+            const searchInput = document.getElementById('searchInput');
+
+            // Usiamo PapaParse con la funzione 'download: true' per scaricare il file via rete
+            Papa.parse("dati_btp_completi.csv", {
+                download: true,
+                header: true,
+                dynamicTyping: true,
+                skipEmptyLines: true,
+                complete: function(results) {
+                    globalData = results.data;
+                    tableHeaders = results.meta.fields;
+                    
+                    statusMessage.textContent = "Dati caricati con successo.";
+                    statusMessage.className = "text-sm text-green-600 mt-1 font-medium";
+                    searchInput.disabled = false; // Riattiva la barra di ricerca
+                    
+                    // Mostra i dati
+                    renderTable(globalData);
+                },
+                error: function(error) {
+                    console.error("Errore:", error);
+                    statusMessage.innerHTML = "<i class='fa-solid fa-triangle-exclamation'></i> Errore: File dati_btp_completi.csv non trovato. (L'automazione non è ancora partita?)";
+                    statusMessage.className = "text-sm text-red-600 mt-1 font-bold";
+                    
+                    document.getElementById('tableHead').innerHTML = `<tr><th class="px-6 py-8 text-center text-red-500">Impossibile trovare il file dei dati. Verifica che lo script Python lo abbia generato.</th></tr>`;
+                }
+            });
+        });
+
+        // 2. Funzione per creare la tabella dinamicamente
+        function renderTable(dataToRender) {
+            const thead = document.getElementById('tableHead');
+            const tbody = document.getElementById('tableBody');
+
+            // --- Crea le intestazioni (Header) ---
+            let theadHtml = '<tr>';
+            tableHeaders.forEach(header => {
+                // Aggiungiamo un evento click per ordinare la tabella
+                theadHtml += `
+                    <th scope="col" onclick="sortTable('${header.replace(/'/g, "\\'")}')" 
+                        class="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider cursor-pointer hover:bg-gray-200 whitespace-nowrap">
+                        ${header} 
+                        <i class="fa-solid fa-sort ml-1 text-gray-400"></i>
+                    </th>`;
+            });
+            theadHtml += '</tr>';
+            thead.innerHTML = theadHtml;
+
+            // --- Crea le righe (Body) ---
+            let tbodyHtml = '';
+            if (dataToRender.length === 0) {
+                tbodyHtml = `<tr><td colspan="${tableHeaders.length}" class="px-6 py-8 text-center text-gray-500">Nessun risultato trovato.</td></tr>`;
+            } else {
+                dataToRender.forEach(row => {
+                    tbodyHtml += '<tr class="hover:bg-blue-50">';
+                    tableHeaders.forEach(header => {
+                        let cellValue = row[header];
+                        
+                        // Pulizia e formattazione visiva di base
+                        if (cellValue === null || cellValue === undefined) cellValue = '-';
+                        
+                        // Se è un numero con molti decimali, lo arrotondiamo
+                        if (typeof cellValue === 'number' && !Number.isInteger(cellValue)) {
+                            cellValue = cellValue.toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                        }
+
+                        // Colora di verde i rendimenti positivi e rosso quelli negativi (se presenti)
+                        let textClass = "text-gray-700";
+                        if (header.toLowerCase().includes("rendimento") || header.toLowerCase().includes("variazione") || header.toLowerCase().includes("cedola")) {
+                            if (typeof row[header] === 'number' || (typeof cellValue === 'string' && cellValue.includes('%'))) {
+                                textClass = row[header] >= 0 ? "text-green-600 font-bold" : "text-red-600 font-bold";
+                            }
+                        }
+
+                        tbodyHtml += `<td class="px-4 py-3 whitespace-nowrap text-sm ${textClass}">${cellValue}</td>`;
+                    });
+                    tbodyHtml += '</tr>';
+                });
+            }
+            
+            tbody.innerHTML = tbodyHtml;
+            document.getElementById('rowCount').textContent = `${dataToRender.length} BTP visualizzati`;
+        }
+
+        // 3. Funzione per ordinare i dati cliccando sulle colonne
+        function sortTable(columnName) {
+            // Seleziona la direzione dell'ordinamento
+            if (currentSortColumn === columnName) {
+                sortAsc = !sortAsc;
+            } else {
+                currentSortColumn = columnName;
+                sortAsc = true;
+            }
+
+            // Esegue l'ordinamento
+            const sortedData = [...globalData].sort((a, b) => {
+                let valA = a[columnName];
+                let valB = b[columnName];
+
+                // Gestione celle vuote
+                if (valA === null || valA === undefined) valA = '';
+                if (valB === null || valB === undefined) valB = '';
+
+                // Se sono stringhe, le mette in minuscolo per un ordine corretto
+                if (typeof valA === 'string') valA = valA.toLowerCase();
+                if (typeof valB === 'string') valB = valB.toLowerCase();
+
+                if (valA < valB) return sortAsc ? -1 : 1;
+                if (valA > valB) return sortAsc ? 1 : -1;
+                return 0;
+            });
+
+            // Riapplica l'eventuale filtro di ricerca prima di stampare
+            filterData(document.getElementById('searchInput').value, sortedData);
+        }
+
+        // 4. Funzione per la barra di ricerca
+        function filterData(searchTerm, data = globalData) {
+            searchTerm = searchTerm.toLowerCase().trim();
+            
+            const filtered = data.filter(row => {
+                // Cerca in tutte le colonne della riga
+                return tableHeaders.some(header => {
+                    const cellValue = row[header];
+                    if (cellValue === null || cellValue === undefined) return false;
+                    return String(cellValue).toLowerCase().includes(searchTerm);
+                });
+            });
+            
+            renderTable(filtered);
+        }
+
+        // Ascolta la digitazione nella barra di ricerca
+        document.getElementById('searchInput').addEventListener('input', (e) => {
+            filterData(e.target.value);
+        });
+
+    </script>
+</body>
+</html>
